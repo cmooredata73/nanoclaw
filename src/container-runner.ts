@@ -15,6 +15,8 @@ import {
   CONTAINER_INSTALL_LABEL,
   DATA_DIR,
   GROUPS_DIR,
+  OLLAMA_ADMIN_TOOLS,
+  OLLAMA_HOST,
   ONECLI_API_KEY,
   ONECLI_URL,
   TIMEZONE,
@@ -411,6 +413,11 @@ async function buildContainerArgs(
   // Everything NanoClaw-specific is in container.json (read by runner at startup).
   args.push('-e', `TZ=${TIMEZONE}`);
 
+  // Ollama MCP tool config — read directly by ollama-mcp-stdio.ts's env vars,
+  // not container.json, since it's a plain env-configured stdio process.
+  if (OLLAMA_HOST) args.push('-e', `OLLAMA_HOST=${OLLAMA_HOST}`);
+  if (OLLAMA_ADMIN_TOOLS) args.push('-e', 'OLLAMA_ADMIN_TOOLS=true');
+
   // Provider-contributed env vars (e.g. XDG_DATA_HOME, OPENCODE_*, NO_PROXY).
   if (providerContribution.env) {
     for (const [key, value] of Object.entries(providerContribution.env)) {
@@ -431,6 +438,24 @@ async function buildContainerArgs(
     throw new Error('OneCLI gateway not applied — refusing to spawn container without credentials');
   }
   log.info('OneCLI gateway applied', { containerName });
+
+  // Per-agent-group env overrides — applied after the OneCLI gateway so
+  // they win over its proxy vars (e.g. NO_PROXY when routing to a local
+  // Ollama instance instead of the Anthropic API via the credential proxy).
+  if (containerConfig.env) {
+    for (const [key, value] of Object.entries(containerConfig.env)) {
+      args.push('-e', `${key}=${value}`);
+    }
+  }
+
+  // Blocked hosts — resolve to 0.0.0.0 so they're unreachable from inside
+  // the container (e.g. blocking api.anthropic.com to prevent accidental
+  // spend when a group is routed to a local model).
+  if (containerConfig.blockedHosts) {
+    for (const host of containerConfig.blockedHosts) {
+      args.push('--add-host', `${host}:0.0.0.0`);
+    }
+  }
 
   // Host gateway
   args.push(...hostGatewayArgs());

@@ -71,12 +71,22 @@ async function main(): Promise<void> {
   // MCP server path — bun runs TS directly; no tsc build step in-image.
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const mcpServerPath = path.join(__dirname, 'mcp-tools', 'index.ts');
+  const ollamaMcpServerPath = path.join(__dirname, 'ollama-mcp-stdio.ts');
 
-  // Build MCP servers config: nanoclaw built-in + any from container.json
+  // Build MCP servers config: nanoclaw + ollama built-ins, plus any from container.json.
+  // Ollama exposes local models as tools (e.g. ollama_generate) so the agent can
+  // offload work like summarization to a local model while staying on this
+  // provider for everything else. OLLAMA_HOST / OLLAMA_ADMIN_TOOLS come from the
+  // container's own env (set by the host from .env), read directly by that process.
   const mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }> = {
     nanoclaw: {
       command: 'bun',
       args: ['run', mcpServerPath],
+      env: {},
+    },
+    ollama: {
+      command: 'bun',
+      args: ['run', ollamaMcpServerPath],
       env: {},
     },
   };

@@ -27,6 +27,8 @@ function presentConfig(row: ContainerConfigRow): Record<string, unknown> {
     packages_npm: JSON.parse(row.packages_npm),
     additional_mounts: JSON.parse(row.additional_mounts),
     cli_scope: row.cli_scope,
+    env: JSON.parse(row.env),
+    blocked_hosts: JSON.parse(row.blocked_hosts),
     updated_at: row.updated_at,
   };
 }
@@ -208,6 +210,46 @@ registerResource({
         updateContainerConfigJson(id, 'mcp_servers', servers);
 
         return { removed: name };
+      },
+    },
+    'config set-env': {
+      access: 'approval',
+      description:
+        'Replace the per-group container env overrides (applied last, so they win over OneCLI-set vars). ' +
+        'Requires `ncl groups restart` to take effect. Use --id <group-id> --env <json-object>. Pass --env {} to clear.',
+      handler: async (args) => {
+        const id = args.id as string;
+        if (!id) throw new Error('--id is required');
+        const envArg = args.env as string | undefined;
+        if (envArg === undefined) throw new Error('--env <json-object> is required');
+
+        const row = getContainerConfig(id);
+        if (!row) throw new Error(`No container config for group: ${id}`);
+
+        const env = JSON.parse(envArg) as Record<string, string>;
+        updateContainerConfigJson(id, 'env', env);
+
+        return { env };
+      },
+    },
+    'config set-blocked-hosts': {
+      access: 'approval',
+      description:
+        'Replace the list of hosts resolved to 0.0.0.0 inside the container (unreachable). ' +
+        'Requires `ncl groups restart` to take effect. Use --id <group-id> --hosts <json-array>. Pass --hosts [] to clear.',
+      handler: async (args) => {
+        const id = args.id as string;
+        if (!id) throw new Error('--id is required');
+        const hostsArg = args.hosts as string | undefined;
+        if (hostsArg === undefined) throw new Error('--hosts <json-array> is required');
+
+        const row = getContainerConfig(id);
+        if (!row) throw new Error(`No container config for group: ${id}`);
+
+        const blockedHosts = JSON.parse(hostsArg) as string[];
+        updateContainerConfigJson(id, 'blocked_hosts', blockedHosts);
+
+        return { blocked_hosts: blockedHosts };
       },
     },
     'config add-package': {

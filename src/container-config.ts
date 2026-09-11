@@ -43,10 +43,17 @@ export interface ContainerConfig {
   maxMessagesPerPrompt?: number;
   model?: string;
   effort?: string;
+  /** Per-agent-group env overrides, applied last so they win over OneCLI-set values (e.g. routing to a local Ollama instance). */
+  env?: Record<string, string>;
+  /** Hosts to resolve to 0.0.0.0 inside the container, making them unreachable (e.g. blocking api.anthropic.com when routed to Ollama). */
+  blockedHosts?: string[];
 }
 
 /** Build a `ContainerConfig` from a DB row + agent group identity. */
 export function configFromDb(row: ContainerConfigRow, group: AgentGroup): ContainerConfig {
+  const env = JSON.parse(row.env) as Record<string, string>;
+  const blockedHosts = JSON.parse(row.blocked_hosts) as string[];
+
   return {
     mcpServers: JSON.parse(row.mcp_servers) as Record<string, McpServerConfig>,
     packages: {
@@ -63,6 +70,8 @@ export function configFromDb(row: ContainerConfigRow, group: AgentGroup): Contai
     maxMessagesPerPrompt: row.max_messages_per_prompt ?? undefined,
     model: row.model ?? undefined,
     effort: row.effort ?? undefined,
+    env: Object.keys(env).length > 0 ? env : undefined,
+    blockedHosts: blockedHosts.length > 0 ? blockedHosts : undefined,
   };
 }
 
