@@ -124,7 +124,11 @@ async function pollActive(): Promise<void> {
   try {
     const sessions = getRunningSessions();
     for (const session of sessions) {
-      await deliverSessionMessages(session);
+      try {
+        await deliverSessionMessages(session);
+      } catch (err) {
+        log.error('Active delivery poll error', { sessionId: session.id, err });
+      }
     }
   } catch (err) {
     log.error('Active delivery poll error', { err });
@@ -139,7 +143,11 @@ async function pollSweep(): Promise<void> {
   try {
     const sessions = getActiveSessions();
     for (const session of sessions) {
-      await deliverSessionMessages(session);
+      try {
+        await deliverSessionMessages(session);
+      } catch (err) {
+        log.error('Sweep delivery poll error', { sessionId: session.id, err });
+      }
     }
   } catch (err) {
     log.error('Sweep delivery poll error', { err });

@@ -5,9 +5,31 @@
  * shared between host and container. Callers own the connection lifecycle
  * (open-write-close per op). See session-manager.ts header for invariants.
  */
+import fs from 'fs';
+
 import Database from 'better-sqlite3';
 
 import { INBOUND_SCHEMA, OUTBOUND_SCHEMA } from './schema.js';
+
+/**
+ * Recover a hot rollback journal left behind when the container was killed
+ * mid-transaction (its agent-runner has no SIGTERM handler, and
+ * killContainer() falls back to SIGKILL after a 1s `docker stop` grace
+ * period). Rolling back a hot journal requires a write-capable connection —
+ * left alone, the readonly open below would fail with "attempt to write a
+ * readonly database" until some unrelated writer happened to touch the file.
+ */
+function recoverHotJournal(dbPath: string): void {
+  if (!fs.existsSync(`${dbPath}-journal`)) return;
+  try {
+    const db = new Database(dbPath);
+    db.pragma('busy_timeout = 5000');
+    db.prepare('SELECT 1').get(); // forces the hot-journal rollback
+    db.close();
+  } catch {
+    // best effort — the readonly open below will surface any remaining error
+  }
+}
 
 /** Apply the inbound or outbound schema to a DB file. Idempotent. */
 export function ensureSchema(dbPath: string, schema: 'inbound' | 'outbound'): void {
@@ -27,6 +49,7 @@ export function openInboundDb(dbPath: string): Database.Database {
 
 /** Open the outbound DB for a session (host reads only). */
 export function openOutboundDb(dbPath: string): Database.Database {
+  recoverHotJournal(dbPath);
   const db = new Database(dbPath, { readonly: true });
   db.pragma('busy_timeout = 5000');
   return db;
