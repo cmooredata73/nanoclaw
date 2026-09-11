@@ -22,6 +22,7 @@ export {
   getMessagingGroupAgentByPair,
   updateMessagingGroupAgent,
   deleteMessagingGroupAgent,
+  getMessagingGroupsByAgentGroup,
 } from './messaging-groups.js';
 export {
   createSession,
@@ -51,3 +52,11 @@ export {
   updateContainerConfigJson,
   deleteContainerConfig,
 } from './container-configs.js';
+export {
+  createDestination,
+  getDestinations,
+  getDestinationByName,
+  getDestinationByTarget,
+  hasDestination,
+  deleteDestination,
+} from '../modules/agent-to-agent/db/agent-destinations.js';
