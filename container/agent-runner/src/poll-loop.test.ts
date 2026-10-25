@@ -238,6 +238,24 @@ describe('origin metadata (from= attribute)', () => {
     expect(prompt).toContain('from="unknown:telegram:chat-999"');
   });
 
+  // Regression for the "Hondo says it replied to you directly, you don't
+  // see it" bug: an agent-to-agent-only agent (no named channel destination)
+  // whose session nonetheless originated from a channel message. Before the
+  // `current` fallback, this produced from="unknown:telegram:telegram:..."
+  // — a label the agent would dutifully echo back as `to=` but that could
+  // never resolve, so every reply in that chat was silently dropped.
+  it('chat message resolves from="current" when routing matches the session\'s own origin chat, even with no named channel destination', () => {
+    getInboundDb()
+      .prepare(`INSERT INTO session_routing (id, channel_type, platform_id, thread_id) VALUES (1, ?, ?, NULL)`)
+      .run('telegram', 'telegram:8673467010');
+    insertWithRouting('m1', 'chat', { sender: 'Hondo', text: 'hi' }, 'telegram', 'telegram:8673467010');
+
+    const prompt = formatMessages(getPendingMessages());
+
+    expect(prompt).toContain('from="current"');
+    expect(prompt).not.toContain('unknown:');
+  });
+
   it('chat message omits from= when routing is null', () => {
     insertMessage('m1', 'chat', { sender: 'Alice', text: 'hi' });
     const prompt = formatMessages(getPendingMessages());

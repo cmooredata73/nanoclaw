@@ -296,8 +296,6 @@ describe('poll loop integration', () => {
   });
 
   it('should inject destination reminder after a compacted event', async () => {
-    // Two destinations — required for the reminder to fire (single-destination
-    // groups have a fallback path that works without <message to="…"> wrapping).
     getInboundDb()
       .prepare(
         `INSERT INTO destinations (name, display_name, type, channel_type, platform_id, agent_group_id)
@@ -325,7 +323,7 @@ describe('poll loop integration', () => {
     await loopPromise.catch(() => {});
   });
 
-  it('should NOT inject destination reminder with a single destination', async () => {
+  it('should inject destination reminder even with a single destination', async () => {
     insertMessage('m1', { sender: 'Alice', text: 'First message' }, { platformId: 'chan-1', channelType: 'discord' });
 
     const provider = new CompactingProvider();
@@ -335,10 +333,13 @@ describe('poll loop integration', () => {
     await waitFor(() => getUndeliveredMessages().length > 0, 2500);
     controller.abort();
 
-    // Only the original prompt push (if any) — no reminder, since beforeEach
-    // seeds exactly one destination.
-    const reminders = provider.pushes.filter((p) => p.includes('Context was just compacted'));
-    expect(reminders).toHaveLength(0);
+    // beforeEach seeds exactly one destination ('discord-test'); the
+    // reminder must still fire since there is no bare-text fallback.
+    const reminder = provider.pushes.find((p) => p.includes('Context was just compacted'));
+    expect(reminder).toBeDefined();
+    expect(reminder).toContain('1 destination');
+    expect(reminder).toContain('discord-test');
+    expect(reminder).toContain('<message to="name">');
 
     await loopPromise.catch(() => {});
   });

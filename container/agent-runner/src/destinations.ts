@@ -11,6 +11,38 @@
  * so even if this table is stale the host's enforcement is authoritative.
  */
 import { getInboundDb } from './db/connection.js';
+import { getSessionRouting } from './db/session-routing.js';
+
+/**
+ * Reserved destination name meaning "the chat/channel this session
+ * originated from" — mirrors the host's `isOriginChat` permission rule in
+ * delivery.ts, which always allows a reply to a session's own origin
+ * messaging group even without an explicit `agent_destinations` row.
+ *
+ * Without this, a session whose origin chat isn't also wired as a named
+ * destination (e.g. an agent-to-agent-only agent whose session nonetheless
+ * started from a channel message) can never resolve a `to=` name for that
+ * chat: `findByRouting` misses, `originAttr` stamps a synthetic
+ * `unknown:<channel>:<platform>` label as `from=`, the agent dutifully
+ * echoes that back per the "reply to the same destination as `from`"
+ * instruction, and `findByName` can never resolve it — the reply is
+ * silently dropped, deterministically, on every message in that chat.
+ * `current` closes that gap by giving the origin chat a name that both
+ * lookup functions below can always resolve.
+ */
+const CURRENT_NAME = 'current';
+
+function currentDestinationEntry(): DestinationEntry | undefined {
+  const routing = getSessionRouting();
+  if (!routing.channel_type || !routing.platform_id) return undefined;
+  return {
+    name: CURRENT_NAME,
+    displayName: 'current conversation',
+    type: 'channel',
+    channelType: routing.channel_type,
+    platformId: routing.platform_id,
+  };
+}
 
 export interface DestinationEntry {
   name: string;
@@ -48,7 +80,11 @@ export function getAllDestinations(): DestinationEntry[] {
 
 export function findByName(name: string): DestinationEntry | undefined {
   const row = getInboundDb().prepare('SELECT * FROM destinations WHERE name = ?').get(name) as DestRow | undefined;
-  return row ? rowToEntry(row) : undefined;
+  if (row) return rowToEntry(row);
+  // An explicit `agent_destinations` row named "current" (admin-configured)
+  // always wins over the reserved fallback above.
+  if (name === CURRENT_NAME) return currentDestinationEntry();
+  return undefined;
 }
 
 /**
@@ -69,7 +105,16 @@ export function findByRouting(
       : (db
           .prepare("SELECT * FROM destinations WHERE type = 'channel' AND channel_type = ? AND platform_id = ?")
           .get(channelType, platformId) as DestRow | undefined);
-  return row ? rowToEntry(row) : undefined;
+  if (row) return rowToEntry(row);
+
+  // No named destination matches — but if these routing fields are this
+  // session's own origin chat, label it `current` rather than falling
+  // through to the unresolvable `unknown:<channel>:<platform>` form.
+  const routing = getSessionRouting();
+  if (routing.channel_type === channelType && routing.platform_id === platformId) {
+    return currentDestinationEntry();
+  }
+  return undefined;
 }
 
 /**
@@ -95,10 +140,22 @@ function buildDestinationsSection(): string {
   const all = getAllDestinations();
 
   if (all.length === 0) {
+    const current = currentDestinationEntry();
+    if (!current) {
+      return [
+        '## Sending messages',
+        '',
+        'You currently have no configured destinations. You cannot send messages until an admin wires one up.',
+      ].join('\n');
+    }
     return [
       '## Sending messages',
       '',
-      'You currently have no configured destinations. You cannot send messages until an admin wires one up.',
+      `Your destination is \`${CURRENT_NAME}\` (the conversation this session started from).`,
+      '',
+      '**Every response must be wrapped** in a `<message to="name">...</message>` block.',
+      'Text outside of `<message>` blocks is scratchpad — logged but not sent anywhere.',
+      'Use `<internal>...</internal>` to make scratchpad intent explicit.',
     ].join('\n');
   }
 
@@ -113,6 +170,9 @@ function buildDestinationsSection(): string {
       const label = d.displayName && d.displayName !== d.name ? ` (${d.displayName})` : '';
       lines.push(`- \`${d.name}\`${label}`);
     }
+  }
+  if (currentDestinationEntry() && !all.some((d) => d.name === CURRENT_NAME)) {
+    lines.push(`- \`${CURRENT_NAME}\` (the conversation this session started from)`);
   }
   lines.push('');
   lines.push('**Every response must be wrapped** in a `<message to="name">...</message>` block.');

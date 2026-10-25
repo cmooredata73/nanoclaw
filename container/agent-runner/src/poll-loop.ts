@@ -384,15 +384,18 @@ async function processQuery(
         // discipline (the destinations are still in the system prompt,
         // but the behavioral pattern is summarized away). Inject a
         // reminder back into the live query so the next turn re-anchors
-        // on the destination model. Only do this when there's >1
-        // destination — single-destination groups have a fallback that
-        // works without wrapping. See qwibitai/nanoclaw#2325.
+        // on the destination model. There is no bare-text fallback for
+        // single-destination groups — dispatchResultText() drops any
+        // unwrapped text regardless of destination count — so the
+        // reminder must fire even with exactly one destination.
+        // See qwibitai/nanoclaw#2325.
         const destinations = getAllDestinations();
-        if (destinations.length > 1) {
+        if (destinations.length > 0) {
           const names = destinations.map((d) => d.name).join(', ');
+          const noun = destinations.length === 1 ? 'destination' : 'destinations';
           query.push(
-            `[system] Context was just compacted. Reminder: you have ${destinations.length} destinations (${names}). ` +
-              `Use <message to="name"> blocks to address them. Bare text goes to the scratchpad fallback only.`,
+            `[system] Context was just compacted. Reminder: you have ${destinations.length} ${noun} (${names}). ` +
+              `Use <message to="name"> blocks to address ${destinations.length === 1 ? 'it' : 'them'}. Bare text goes to the scratchpad fallback only.`,
           );
         }
       }

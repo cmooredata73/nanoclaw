@@ -1,6 +1,6 @@
 ## Sending messages
 
-Your final response is delivered via the `## Sending messages` rules in your runtime system prompt (single-destination: just write; multi-destination: use `<message to="name">...</message>` blocks). See that section for the current destination list.
+Your final response is delivered via the `## Sending messages` rules in your runtime system prompt. **Always wrap your final output in `<message to="name">...</message>` blocks — even with a single destination.** Bare text is treated as scratchpad and never delivered. See that section for the current destination list.
 
 ### Mid-turn updates (`send_message`)
 
